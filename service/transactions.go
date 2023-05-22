@@ -31,6 +31,8 @@ type Transaction struct {
 	Tags               []string `bql:"tags" json:"tags"`
 	CurrencySymbol     string   `json:"currencySymbol,omitempty"`
 	CostCurrencySymbol string   `json:"costCurrencySymbol,omitempty"`
+	From               string   `json:"from,omitempty"`
+	To                 string   `json:"to,omitempty"`
 }
 
 func QueryTransactions(c *gin.Context) {

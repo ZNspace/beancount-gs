@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,7 +17,15 @@ var serverConfig Config
 var ledgerConfigMap map[string]Config
 var ledgerAccountsMap map[string][]Account
 var ledgerAccountTypesMap map[string]map[string]string
+var ledgerAccountMatchesMap map[string]AccountMatch
 var whiteList []string
+
+type AccountMatch struct {
+	Accounts     map[string]string `json:"accounts"`
+	CreditCards  map[string]string `json:"creditCards"`
+	Incomes      map[string]string `json:"incomes"`
+	Descriptions map[string]string `json:"descriptions"`
+}
 
 type Config struct {
 	Id                string `json:"id,omitempty"`
@@ -190,6 +200,10 @@ func GetAccountType(ledgerId string, acc string) AccountType {
 	return accountType
 }
 
+func GetLedgerAccountMatches(ledgerId string) AccountMatch {
+	return ledgerAccountMatchesMap[ledgerId]
+}
+
 func IsInWhiteList(ledgerId string) bool {
 	// ledger white list is empty, return true
 	if len(whiteList) == 0 {
@@ -271,6 +285,11 @@ func LoadLedgerAccounts(ledgerId string) error {
 		LogSystemError("Failed to load account types")
 		return loadErr
 	}
+	loadMatchesErr := LoadLedgerAccountMatchesMap(config)
+	if loadMatchesErr != nil {
+		LogSystemError("Failed to load account matches")
+		return loadMatchesErr
+	}
 	accountDirPath := config.DataPath + "/account"
 	dirs, err := os.ReadDir(accountDirPath)
 	if err != nil {
@@ -342,6 +361,26 @@ func LoadLedgerAccountTypesMap(config Config) error {
 	return nil
 }
 
+func LoadLedgerAccountMatchesMap(config Config) error {
+	path := GetLedgerAccountMatchFilePath(config.DataPath)
+	fileContent, err := ReadFile(path)
+	if err != nil {
+		return err
+	}
+	accountMatchs := AccountMatch{}
+	err = json.Unmarshal(fileContent, &accountMatchs)
+	if err != nil {
+		LogSystemError("Failed unmarshal config file (" + path + ")")
+		return err
+	}
+	if ledgerAccountMatchesMap == nil {
+		ledgerAccountMatchesMap = make(map[string]AccountMatch)
+	}
+	ledgerAccountMatchesMap[config.Id] = accountMatchs
+	LogSystemInfo(fmt.Sprintf("Success load [%s] account type cache", config.Mail))
+	return nil
+}
+
 func WriteLedgerConfigMap(newLedgerConfigMap map[string]Config) error {
 	path := GetServerLedgerConfigFilePath()
 	mapBytes, err := json.Marshal(ledgerConfigMap)
@@ -386,4 +425,49 @@ func GetAccountPrefix(account string) string {
 func GetAccountIconName(account string) string {
 	nodes := strings.Split(account, ":")
 	return strings.Join(nodes, "_")
+}
+
+func GetAccountByGuess(ledgerId string, fromUser string, description string, time ...*time.Time) string {
+	accountMatches := GetLedgerAccountMatches(ledgerId)
+	accountCode := "Expenses:Unknown"
+	for name, code := range accountMatches.Descriptions {
+		reg := regexp.MustCompile(name)
+		if reg.MatchString(description) {
+			return code
+		}
+	}
+
+	if accountCode == "get_eating_account" {
+		accountCode = GetEatingAccount(description, time[0])
+	}
+
+	return accountCode
+}
+
+func GetIncomeAccountByGuess(ledgerId string, fromUser string, description string) string {
+	accountMatches := GetLedgerAccountMatches(ledgerId)
+	for name, accountCode := range accountMatches.Incomes {
+		reg := regexp.MustCompile(name)
+		if reg.MatchString(description) {
+			return accountCode
+		}
+	}
+	return "Income:Unknown"
+}
+
+func GetEatingAccount(description string, time ...*time.Time) string {
+	if len(time) == 0 || time[0] == nil {
+		return "Expenses:Eating:Others"
+	}
+
+	switch hour := time[0].Hour(); {
+	case hour <= 3 || hour >= 21:
+		return "Expenses:Eating:Nightingale"
+	case hour <= 10:
+		return "Expenses:Eating:Breakfast"
+	case hour <= 16:
+		return "Expenses:Eating:Lunch"
+	default:
+		return "Expenses:Eating:Supper"
+	}
 }

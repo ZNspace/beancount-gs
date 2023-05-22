@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"encoding/csv"
 	"errors"
-	"github.com/beancount-gs/script"
-	"github.com/gin-gonic/gin"
-	"golang.org/x/text/encoding/simplifiedchinese"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/beancount-gs/script"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 func ImportAliPayCSV(c *gin.Context) {
@@ -33,7 +34,7 @@ func ImportAliPayCSV(c *gin.Context) {
 			script.LogError(ledgerConfig.Mail, err.Error())
 		}
 		if len(lines) == 17 {
-			transaction, err := importBrowserAliPayCSV(lines, currency, currencySymbol)
+			transaction, err := importBrowserAliPayCSV(lines, currency, currencySymbol, ledgerConfig.Id)
 			if err != nil {
 				script.LogInfo(ledgerConfig.Mail, err.Error())
 				continue
@@ -60,28 +61,41 @@ func ImportAliPayCSV(c *gin.Context) {
 	OK(c, result)
 }
 
-func importBrowserAliPayCSV(lines []string, currency string, currencySymbol string) (Transaction, error) {
+func importBrowserAliPayCSV(lines []string, currency string, currencySymbol string, ledgerId string) (Transaction, error) {
+	// 交易创建时间
 	dateColumn := strings.Fields(lines[2])
+	// 资金状态
 	status := strings.Trim(lines[15], " ")
+	// 交易对方
+	payee := strings.Trim(lines[7], " ")
+	// 商品名称
+	productName := strings.Trim(lines[8], " ")
+	// 
+	date := strings.Trim(dateColumn[0], " ")
 	account := ""
+	from := ""
 	if status == "" {
 		account = ""
 	} else if status == "已收入" {
 		account = "Income:"
+		from = script.GetIncomeAccountByGuess(ledgerId, payee, productName)
 	} else {
 		account = "Expenses:"
 	}
 
+	to := script.GetAccountByGuess(ledgerId, payee, productName)
 	if len(dateColumn) >= 2 {
 		return Transaction{
 			Id:             strings.Trim(lines[0], " "),
-			Date:           strings.Trim(dateColumn[0], " "),
-			Payee:          strings.Trim(lines[7], " "),
-			Narration:      strings.Trim(lines[8], " "),
+			Date:          date,
+			Payee:          payee,
+			Narration:      productName,
 			Number:         strings.Trim(lines[9], " "),
 			Account:        account,
 			Currency:       currency,
 			CurrencySymbol: currencySymbol,
+			From:           from,
+			To:             to,
 		}, nil
 	}
 	return Transaction{}, errors.New("parse error")

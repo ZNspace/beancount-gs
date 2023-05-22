@@ -1,0 +1,27 @@
+{
+  "creditCards": {
+    "中信银行": "Liabilities:CreditCard:CITIC"
+  },
+  "accounts": {
+    "余额宝": "Assets:Company:Alipay:MonetaryFund",
+    "余利宝": "Assets:Bank:MyBank",
+    "花呗": "Liabilities:Company:Huabei",
+    "建设银行": "Liabilities:CreditCard:CCB",
+    "零钱": "Assets:Balances:WeChat"
+  },
+  "incomes": {
+    "余额宝.*收益发放": "Income:Trade:PnL"
+  },
+  "descriptions": {
+    "余额宝.*收益发放": "Assets:Flow:EBank:AliPay",
+    "转入到余利宝": "Assets:Flow:EBank:AliPay",
+    "花呗收钱服务费": "Expenses:Fee",
+    "自动还款-花呗.*账单": "Liabilities:Life:Huabei",
+    "北京轨道交通*": "Expenses:Travel:Bus",
+    "地铁出行": "Expenses:Travel:Bus",
+    "火车票": "Expenses:Travel:Train",
+    "信用卡自动还款|信用卡还款": "get_credit_return",
+    "外卖订单": "get_eating_account",
+    "美团订单": "get_eating_account"
+  }
+}
