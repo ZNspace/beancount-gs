@@ -159,7 +159,8 @@ func GetLedgerAccount(ledgerId string, account string) Account {
 			return acc
 		}
 	}
-	panic("Invalid account")
+	errorMsg := strings.Join([]string{"Invalid account", account}, " ")
+	panic(errorMsg)
 }
 
 func UpdateLedgerAccounts(ledgerId string, accounts []Account) {
@@ -427,18 +428,18 @@ func GetAccountIconName(account string) string {
 	return strings.Join(nodes, "_")
 }
 
-func GetAccountByGuess(ledgerId string, fromUser string, description string, time ...*time.Time) string {
+func GetAccountByGuess(ledgerId string, fromUser string, description string, dateStr string) string {
 	accountMatches := GetLedgerAccountMatches(ledgerId)
 	accountCode := "Expenses:Unknown"
 	for name, code := range accountMatches.Descriptions {
 		reg := regexp.MustCompile(name)
 		if reg.MatchString(description) {
-			return code
+			accountCode = code
 		}
 	}
 
 	if accountCode == "get_eating_account" {
-		accountCode = GetEatingAccount(description, time[0])
+		accountCode = GetEatingAccount(description, dateStr)
 	}
 
 	return accountCode
@@ -455,19 +456,23 @@ func GetIncomeAccountByGuess(ledgerId string, fromUser string, description strin
 	return "Income:Unknown"
 }
 
-func GetEatingAccount(description string, time ...*time.Time) string {
-	if len(time) == 0 || time[0] == nil {
-		return "Expenses:Eating:Others"
+func GetEatingAccount(description string, dateStr string) string {
+	timeLayout := "2006-01-02 00:00:00"
+	parsedTime, err := time.Parse(timeLayout, dateStr)
+
+	if err != nil {
+		fmt.Println("解析时间失败")
+		return "Expenses:Life:Food:Snack:零食"
 	}
 
-	switch hour := time[0].Hour(); {
+	switch hour := parsedTime.Hour(); {
 	case hour <= 3 || hour >= 21:
-		return "Expenses:Eating:Nightingale"
+		return "Expenses:Life:Food:Meal:夜宵"
 	case hour <= 10:
-		return "Expenses:Eating:Breakfast"
+		return "Expenses:Life:Food:Meal:早餐"
 	case hour <= 16:
-		return "Expenses:Eating:Lunch"
+		return "Expenses:Life:Food:Meal:午餐"
 	default:
-		return "Expenses:Eating:Supper"
+		return "Expenses:Life:Food:Meal:晚餐"
 	}
 }

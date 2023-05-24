@@ -71,7 +71,8 @@ func importBrowserAliPayCSV(lines []string, currency string, currencySymbol stri
 	// 商品名称
 	productName := strings.Trim(lines[8], " ")
 	// 
-	date := strings.Trim(dateColumn[0], " ")
+	dateTime := formatStr(lines[2])
+	date := dateColumn[0]
 	account := ""
 	from := ""
 	if status == "" {
@@ -83,11 +84,11 @@ func importBrowserAliPayCSV(lines []string, currency string, currencySymbol stri
 		account = "Expenses:"
 	}
 
-	to := script.GetAccountByGuess(ledgerId, payee, productName)
+	to := script.GetAccountByGuess(ledgerId, payee, productName, dateTime)
 	if len(dateColumn) >= 2 {
 		return Transaction{
 			Id:             strings.Trim(lines[0], " "),
-			Date:          date,
+			Date:          	date,
 			Payee:          payee,
 			Narration:      productName,
 			Number:         strings.Trim(lines[9], " "),

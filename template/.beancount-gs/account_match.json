@@ -1,27 +1,32 @@
 {
-  "creditCards": {
-    "中信银行": "Liabilities:CreditCard:CITIC"
-  },
   "accounts": {
-    "余额宝": "Assets:Company:Alipay:MonetaryFund",
-    "余利宝": "Assets:Bank:MyBank",
-    "花呗": "Liabilities:Company:Huabei",
-    "建设银行": "Liabilities:CreditCard:CCB",
-    "零钱": "Assets:Balances:WeChat"
+    "余额宝": "Assets:Flow:EBank:AliPay:支付宝",
+    "余利宝": "Assets:Flow:EBank:AliPay:支付宝",
+    "花呗": "Liabilities:Life:Huabei:花呗",
+    "零钱": "Assets:Flow:EBank:WxPay:微信支付"
   },
   "incomes": {
-    "余额宝.*收益发放": "Income:Trade:PnL"
+    "余额宝.*收益发放": "Income:Invest:投资收益"
   },
   "descriptions": {
-    "余额宝.*收益发放": "Assets:Flow:EBank:AliPay",
-    "转入到余利宝": "Assets:Flow:EBank:AliPay",
-    "花呗收钱服务费": "Expenses:Fee",
-    "自动还款-花呗.*账单": "Liabilities:Life:Huabei",
-    "北京轨道交通*": "Expenses:Travel:Bus",
-    "地铁出行": "Expenses:Travel:Bus",
-    "火车票": "Expenses:Travel:Train",
-    "信用卡自动还款|信用卡还款": "get_credit_return",
-    "外卖订单": "get_eating_account",
-    "美团订单": "get_eating_account"
+    "余额宝.*收益发放|转入到余利宝|卖出至余额宝|转账收款到余额宝": "Assets:Flow:EBank:AliPay:支付宝",
+    "服务费": "Expenses:Life:Other:Commission:手续费",
+    "还款-花呗.*账单": "Liabilities:Life:Huabei:花呗",
+    "地铁*|轨道交通*|公交": "Expenses:Life:Travel:Bus:公交地铁",
+    "单车骑行|mobike": "Expenses:Life:Travel:Bike:共享单车",
+    "火车票": "Expenses:Life:Travel:Train:火车",
+    "打车": "Expenses:Life:Travel:Taxi:出租车",
+    "亲情卡": "Expenses:Life:Shopping:购物",
+    "优衣库|迪卡侬|Nike": "Expenses:Life:Shopping:购物",
+    "电影": "Expenses:Life:Hobby:Movie:电影",
+    "信用卡自动还款|信用卡还款": "Liabilities:Life:CreditCard:信用卡",
+    "药房|医院|医药|DRUG": "Expenses:Life:Health:Drugs:药品",
+    "保险": "Expenses:Life:Insurance:保险",
+    "租房订单": "Expenses:Life:House:Rent:房租",
+    "电费": "Expenses:Life:House:Electricity:用电",
+    "中国石油": "Expenses:Life:Car:Oil:加油",
+    "App Store": "Expenses:Life:Subscribe:会员订阅",
+    "中国联通": "Expenses:Life:Subscribe:Mobile:手机话费",
+    "外卖订单|美团订单|小吃|餐饮|面馆|餐厅|包子铺|饿了吗|McDonaldsChina|美团收银": "get_eating_account"
   }
 }
