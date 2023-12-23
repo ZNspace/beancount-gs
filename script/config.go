@@ -6,15 +6,18 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 var serverSecret string
 var serverConfig Config
+var serverCurrencies []LedgerCurrency
 var ledgerConfigMap map[string]Config
 var ledgerAccountsMap map[string][]Account
 var ledgerAccountTypesMap map[string]map[string]string
+var ledgerCurrencyMap map[string][]LedgerCurrency
 var whiteList []string
 
 type Config struct {
@@ -30,19 +33,40 @@ type Config struct {
 }
 
 type Account struct {
-	Acc                  string       `json:"account"`
-	StartDate            string       `json:"startDate"`
-	Currency             string       `json:"currency,omitempty"`
-	MarketNumber         string       `json:"marketNumber,omitempty"`
-	MarketCurrency       string       `json:"marketCurrency,omitempty"`
-	MarketCurrencySymbol string       `json:"marketCurrencySymbol,omitempty"`
-	EndDate              string       `json:"endDate,omitempty"`
-	Type                 *AccountType `json:"type,omitempty"`
+	Acc                  string            `json:"account"`
+	StartDate            string            `json:"startDate"`
+	Currency             string            `json:"currency,omitempty"`          // 货币
+	CurrencySymbol       string            `json:"currencySymbol,omitempty"`    // 货币符号
+	Price                string            `json:"price,omitempty"`             // 汇率
+	PriceDate            string            `json:"priceDate,omitempty"`         // 汇率日期
+	IsAnotherCurrency    bool              `json:"isAnotherCurrency,omitempty"` // 其他币种标识
+	IsCurrent            bool              `json:"isCurrent,omitempty"`
+	Positions            []AccountPosition `json:"positions,omitempty"`
+	MarketNumber         string            `json:"marketNumber,omitempty"`
+	MarketCurrency       string            `json:"marketCurrency,omitempty"`
+	MarketCurrencySymbol string            `json:"marketCurrencySymbol,omitempty"`
+	EndDate              string            `json:"endDate,omitempty"`
+	Type                 *AccountType      `json:"type,omitempty"`
+}
+
+type AccountPosition struct {
+	Number         string `json:"number,omitempty"`
+	Currency       string `json:"currency,omitempty"`
+	CurrencySymbol string `json:"currencySymbol,omitempty"`
 }
 
 type AccountType struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
+}
+
+type LedgerCurrency struct {
+	Name      string `json:"name"`
+	Currency  string `json:"currency"`
+	Symbol    string `json:"symbol"`
+	Current   bool   `json:"current,omitempty"`
+	Price     string `json:"price,omitempty"`
+	PriceDate string `json:"priceDate,omitempty"`
 }
 
 func GetServerConfig() Config {
@@ -180,7 +204,7 @@ func GetAccountType(ledgerId string, acc string) AccountType {
 		// 默认取最后一个节点
 		Name: accNodes[len(accNodes)-1],
 	}
-	var matchKey string = ""
+	var matchKey = ""
 	for key, name := range accountTypes {
 		if strings.Contains(acc, key) && len(matchKey) < len(key) {
 			matchKey = key
@@ -243,6 +267,10 @@ func LoadLedgerAccountsMap() error {
 			return err
 		}
 		err = LoadLedgerAccounts(config.Id)
+		if err != nil {
+			return err
+		}
+		err = LoadLedgerCurrencyMap(&config)
 		if err != nil {
 			return err
 		}
@@ -368,14 +396,154 @@ func EqualServerSecret(secret string) bool {
 	return serverSecret == secret
 }
 
-func GetCommoditySymbol(commodity string) string {
-	switch commodity {
-	case "CNY":
-		return "￥"
-	case "USD":
-		return "$"
+func LoadServerCurrencyMap() {
+	if serverCurrencies == nil {
+		serverCurrencies = make([]LedgerCurrency, 0)
 	}
-	return ""
+	serverCurrencies = append(serverCurrencies, LedgerCurrency{Name: "人民币", Currency: "CNY", Symbol: "¥"})
+	serverCurrencies = append(serverCurrencies, LedgerCurrency{Name: "美元", Currency: "USD", Symbol: "$"})
+	serverCurrencies = append(serverCurrencies, LedgerCurrency{Name: "欧元", Currency: "EUR", Symbol: "€"})
+	serverCurrencies = append(serverCurrencies, LedgerCurrency{Name: "日元", Currency: "JPY", Symbol: "¥"})
+	serverCurrencies = append(serverCurrencies, LedgerCurrency{Name: "加拿大元", Currency: "CAD", Symbol: "$"})
+	serverCurrencies = append(serverCurrencies, LedgerCurrency{Name: "俄罗斯卢布", Currency: "RUB", Symbol: "₽"})
+}
+
+func LoadLedgerCurrencyMap(config *Config) error {
+	LoadServerCurrencyMap()
+	path := GetLedgerCurrenciesFilePath(config.DataPath)
+	if !FileIfExist(path) {
+		err := CreateFile(path)
+		if err != nil {
+			return err
+		}
+
+		bytes, err := json.Marshal(serverCurrencies)
+		if err != nil {
+			return err
+		}
+		err = WriteFile(path, string(bytes))
+		if err != nil {
+			return err
+		}
+	}
+
+	fileContent, err := ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var currencies []LedgerCurrency
+	err = json.Unmarshal(fileContent, &currencies)
+	if err != nil {
+		LogSystemError("Failed unmarshal config file (" + path + ")")
+		return err
+	}
+	if ledgerCurrencyMap == nil {
+		ledgerCurrencyMap = make(map[string][]LedgerCurrency)
+	}
+	ledgerCurrencyMap[config.Id] = currencies
+	LogSystemInfo(fmt.Sprintf("Success load [%s] account type cache", config.Mail))
+	// 刷新汇率
+	RefreshLedgerCurrency(config)
+	return nil
+}
+
+func GetLedgerCurrency(ledgerId string) []LedgerCurrency {
+	return ledgerCurrencyMap[ledgerId]
+}
+
+type CommodityPrice struct {
+	Date      string `json:"date"`
+	Commodity string `json:"commodity"`
+	Currency  string `json:"operatingCurrency"`
+	Value     string `json:"value"`
+}
+
+func RefreshLedgerCurrency(ledgerConfig *Config) []LedgerCurrency {
+	// 查询货币获取当前汇率
+	output := BeanReportAllPrices(ledgerConfig)
+	statsPricesResultList := make([]CommodityPrice, 0)
+	lines := strings.Split(output, "\n")
+	// foreach lines
+	for _, line := range lines {
+		if strings.Trim(line, " ") == "" {
+			continue
+		}
+		// split line by " "
+		words := strings.Fields(line)
+		statsPricesResultList = append(statsPricesResultList, CommodityPrice{
+			Date:      words[0],
+			Commodity: words[2],
+			Value:     words[3],
+			Currency:  words[4],
+		})
+	}
+
+	// statsPricesResultList 转为 map
+	existCurrencyMap := make(map[string]CommodityPrice)
+	for _, statsPricesResult := range statsPricesResultList {
+		existCurrencyMap[statsPricesResult.Commodity] = statsPricesResult
+	}
+
+	result := make([]LedgerCurrency, 0)
+	currencies := GetLedgerCurrency(ledgerConfig.Id)
+	for _, c := range currencies {
+		current := c.Currency == ledgerConfig.OperatingCurrency
+		var price string
+		var date string
+		if current {
+			price = "1"
+			date = time.Now().Format("2006-01-02")
+		} else {
+			value, exists := existCurrencyMap[c.Currency]
+			if exists {
+				price = value.Value
+				date = value.Date
+			}
+		}
+		result = append(result, LedgerCurrency{
+			Name:      c.Name,
+			Currency:  c.Currency,
+			Symbol:    c.Symbol,
+			Current:   current,
+			Price:     price,
+			PriceDate: date,
+		})
+	}
+	// 刷新账本货币缓存
+	ledgerCurrencyMap[ledgerConfig.Id] = result
+	return result
+}
+
+func GetLedgerCurrencyMap(ledgerId string) map[string]LedgerCurrency {
+	currencyMap := make(map[string]LedgerCurrency)
+	currencies := GetLedgerCurrency(ledgerId)
+	if currencies == nil {
+		return currencyMap
+	}
+	for _, currency := range currencies {
+		currencyMap[currency.Currency] = currency
+	}
+	return currencyMap
+}
+
+func GetCommoditySymbol(ledgerId string, commodity string) string {
+	currencyMap := GetLedgerCurrencyMap(ledgerId)
+	if currencyMap == nil {
+		return commodity
+	}
+	if _, ok := currencyMap[commodity]; !ok {
+		return commodity
+	}
+	return currencyMap[commodity].Symbol
+}
+
+func GetServerCommoditySymbol(commodity string) string {
+	for _, currency := range serverCurrencies {
+		if currency.Currency == commodity {
+			return currency.Symbol
+		}
+	}
+	return commodity
 }
 
 func GetAccountPrefix(account string) string {

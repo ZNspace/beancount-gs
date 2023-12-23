@@ -105,10 +105,19 @@ func BQLQueryListByCustomSelect(ledgerConfig *Config, selectBql string, queryPar
 }
 
 func BeanReportAllPrices(ledgerConfig *Config) string {
-	beanFilePath := ledgerConfig.DataPath + "/index.bean"
+	beanFilePath := GetLedgerPriceFilePath(ledgerConfig.DataPath)
 
 	LogInfo(ledgerConfig.Mail, "bean-report "+beanFilePath+" all_prices")
 	cmd := exec.Command("bean-report", beanFilePath, "all_prices")
+	output, _ := cmd.Output()
+	return string(output)
+}
+
+func BeanReportAllEvents(ledgerConfig *Config) string {
+	beanFilePath := GetLedgerEventsFilePath(ledgerConfig.DataPath)
+
+	LogInfo(ledgerConfig.Mail, "bean-report "+beanFilePath+" events")
+	cmd := exec.Command("bean-report", beanFilePath, "events")
 	output, _ := cmd.Output()
 	return string(output)
 }

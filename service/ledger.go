@@ -160,7 +160,7 @@ func OpenOrCreateLedger(c *gin.Context) {
 		resultMap["ledgerId"] = ledgerId
 		resultMap["title"] = userLedger.Title
 		resultMap["currency"] = userLedger.OperatingCurrency
-		resultMap["currencySymbol"] = script.GetCommoditySymbol(userLedger.OperatingCurrency)
+		resultMap["currencySymbol"] = script.GetServerCommoditySymbol(userLedger.OperatingCurrency)
 		resultMap["createDate"] = userLedger.CreateDate
 		OK(c, resultMap)
 		return
@@ -176,7 +176,7 @@ func OpenOrCreateLedger(c *gin.Context) {
 	resultMap["ledgerId"] = ledgerId
 	resultMap["title"] = userLedger.Title
 	resultMap["currency"] = userLedger.OperatingCurrency
-	resultMap["currencySymbol"] = script.GetCommoditySymbol(userLedger.OperatingCurrency)
+	resultMap["currencySymbol"] = script.GetCommoditySymbol(ledgerId, userLedger.OperatingCurrency)
 	resultMap["createDate"] = userLedger.CreateDate
 	OK(c, resultMap)
 }
@@ -269,6 +269,11 @@ func createNewLedger(loginForm LoginForm, ledgerId string) (*script.Config, erro
 	}
 	// add accounts cache
 	err = script.LoadLedgerAccounts(ledgerId)
+	if err != nil {
+		return nil, err
+	}
+	// add currency cache
+	err = script.LoadLedgerCurrencyMap(&ledgerConfig)
 	if err != nil {
 		return nil, err
 	}

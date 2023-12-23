@@ -40,6 +40,10 @@ func GetLedgerAccountTypeFilePath(dataPath string) string {
 	return dataPath + "/.beancount-gs/account_type.json"
 }
 
+func GetLedgerCurrenciesFilePath(dataPath string) string {
+	return dataPath + "/.beancount-gs/currency.json"
+}
+
 func GetLedgerPriceFilePath(dataPath string) string {
 	return dataPath + "/price/prices.bean"
 }
@@ -55,4 +59,14 @@ func GetLedgerMonthFilePath(dataPath string, month string) string {
 func GetLedgerIndexFilePath(dataPath string) string {
 	LogInfo(dataPath, dataPath+"/index.bean")
 	return dataPath + "/index.bean"
+}
+
+func GetLedgerIncludesFilePath(dataPath string) string {
+	LogInfo(dataPath, dataPath+"/includes.bean")
+	return dataPath + "/includes.bean"
+}
+
+func GetLedgerEventsFilePath(dataPath string) string {
+	LogInfo(dataPath, dataPath+"/event/events.bean")
+	return dataPath + "/event/events.bean"
 }

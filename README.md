@@ -25,7 +25,7 @@
 - [X] 投资管理(FIFO)
 - [X] 第三方账单导入(支付宝，微信，工商银行，农业银行)
 - [X] 分期记账
-- [ ] 事件
+- [X] 事件
 
 ## 如何使用
 
@@ -91,6 +91,10 @@ dataPath=自定义的目录
 ## 开源协议
 
 [MIT](https://github.com/BaoXuebin/beancount-gs/blob/main/License) @BaoXuebin
+
+## 赞助
+
+[赞助地址](https://xdbin.com/sponsor)
 
 ## 感谢
 

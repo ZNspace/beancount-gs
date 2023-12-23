@@ -46,7 +46,7 @@ func QueryTransactions(c *gin.Context) {
 	}
 	// 格式化金额
 	for i := 0; i < len(transactions); i++ {
-		symbol := script.GetCommoditySymbol(transactions[i].Currency)
+		symbol := script.GetCommoditySymbol(ledgerConfig.Id, transactions[i].Currency)
 		transactions[i].CurrencySymbol = symbol
 		transactions[i].CostCurrencySymbol = symbol
 		if transactions[i].Price != "" {
@@ -69,11 +69,12 @@ type AddTransactionForm struct {
 }
 
 type AddTransactionEntryForm struct {
-	Account       string          `form:"account" binding:"required" json:"account"`
-	Number        decimal.Decimal `form:"number" json:"number"`
-	Currency      string          `form:"currency" json:"currency"`
-	Price         decimal.Decimal `form:"price" json:"price"`
-	PriceCurrency string          `form:"priceCurrency" json:"priceCurrency"`
+	Account           string          `form:"account" binding:"required" json:"account"`
+	Number            decimal.Decimal `form:"number" json:"number,omitempty"`
+	Currency          string          `form:"currency" json:"currency"`
+	Price             decimal.Decimal `form:"price" json:"price,omitempty"`
+	PriceCurrency     string          `form:"priceCurrency" json:"priceCurrency,omitempty"`
+	IsAnotherCurrency bool            `form:"isAnotherCurrency" json:"isAnotherCurrency,omitempty"`
 }
 
 func sum(entries []AddTransactionEntryForm, openingBalances string) decimal.Decimal {
@@ -162,6 +163,8 @@ func saveTransaction(c *gin.Context, addTransactionForm AddTransactionForm, ledg
 		}
 	}
 
+	currencyMap := script.GetLedgerCurrencyMap(ledgerConfig.Id)
+
 	var autoBalance bool
 	for _, entry := range addTransactionForm.Entries {
 		account := script.GetLedgerAccount(ledgerConfig.Id, entry.Account)
@@ -171,17 +174,28 @@ func saveTransaction(c *gin.Context, addTransactionForm AddTransactionForm, ledg
 		} else {
 			line += fmt.Sprintf("\r\n %s %s %s", entry.Account, entry.Number.Round(2).StringFixedBank(2), account.Currency)
 		}
+		zero := decimal.NewFromInt(0)
 		// 判断是否涉及多币种的转换
 		if account.Currency != ledgerConfig.OperatingCurrency && entry.Account != ledgerConfig.OpeningBalances {
 			autoBalance = true
-			// 根据 number 的正负来判断是买入还是卖出
-			if entry.Number.GreaterThan(decimal.NewFromInt(0)) {
-				// {351.729 CNY, 2021-09-29}
-				line += fmt.Sprintf(" {%s %s, %s}", entry.Price, ledgerConfig.OperatingCurrency, addTransactionForm.Date)
-			} else {
-				// {} @ 359.019 CNY
-				line += fmt.Sprintf(" {} @ %s %s", entry.Price, ledgerConfig.OperatingCurrency)
+			// 汇率值小于等于0，则不进行汇率转换
+			if entry.Price.LessThanOrEqual(zero) {
+				continue
 			}
+
+			_, isCurrency := currencyMap[account.Currency]
+			// 货币跳过汇率转换
+			if !isCurrency {
+				// 根据 number 的正负来判断是买入还是卖出
+				if entry.Number.GreaterThan(zero) {
+					// {351.729 CNY, 2021-09-29}
+					line += fmt.Sprintf(" {%s %s, %s}", entry.Price, ledgerConfig.OperatingCurrency, addTransactionForm.Date)
+				} else {
+					// {} @ 359.019 CNY
+					line += fmt.Sprintf(" {} @ %s %s", entry.Price, ledgerConfig.OperatingCurrency)
+				}
+			}
+
 			priceLine := fmt.Sprintf("%s price %s %s %s", addTransactionForm.Date, account.Currency, entry.Price, ledgerConfig.OperatingCurrency)
 			err := script.AppendFileInNewLine(script.GetLedgerPriceFilePath(ledgerConfig.DataPath), priceLine)
 			if err != nil {
@@ -189,6 +203,14 @@ func saveTransaction(c *gin.Context, addTransactionForm AddTransactionForm, ledg
 					InternalError(c, err.Error())
 				}
 				return errors.New("internal error")
+			}
+			// 刷新币种汇率
+			if isCurrency {
+				err = script.LoadLedgerCurrencyMap(ledgerConfig)
+				if err != nil {
+					InternalError(c, err.Error())
+					return errors.New("internal error")
+				}
 			}
 		}
 	}
