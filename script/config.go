@@ -33,13 +33,14 @@ type Config struct {
 }
 
 type Account struct {
-	Acc                  string            `json:"account"`
-	StartDate            string            `json:"startDate"`
-	Currency             string            `json:"currency,omitempty"`          // 货币
-	CurrencySymbol       string            `json:"currencySymbol,omitempty"`    // 货币符号
-	Price                string            `json:"price,omitempty"`             // 汇率
-	PriceDate            string            `json:"priceDate,omitempty"`         // 汇率日期
-	IsAnotherCurrency    bool              `json:"isAnotherCurrency,omitempty"` // 其他币种标识
+	Acc       string `json:"account"`
+	StartDate string `json:"startDate"`
+	Currency  string `json:"currency,omitempty"` // 货币
+	//CurrencySymbol       string            `json:"currencySymbol,omitempty"`    // 货币符号
+	Currencies []AccountCurrency `json:"currencies,omitempty"` // 多个货币单位
+	//Price                string            `json:"price,omitempty"`             // 汇率
+	//PriceDate            string            `json:"priceDate,omitempty"`         // 汇率日期
+	//IsAnotherCurrency    bool              `json:"isAnotherCurrency,omitempty"` // 其他币种标识
 	IsCurrent            bool              `json:"isCurrent,omitempty"`
 	Positions            []AccountPosition `json:"positions,omitempty"`
 	MarketNumber         string            `json:"marketNumber,omitempty"`
@@ -47,6 +48,15 @@ type Account struct {
 	MarketCurrencySymbol string            `json:"marketCurrencySymbol,omitempty"`
 	EndDate              string            `json:"endDate,omitempty"`
 	Type                 *AccountType      `json:"type,omitempty"`
+	Status               bool              `json:"status,omitempty"`
+}
+
+type AccountCurrency struct {
+	Currency          string `json:"currency,omitempty"`          // 货币
+	CurrencySymbol    string `json:"currencySymbol,omitempty"`    // 货币符号
+	IsAnotherCurrency bool   `json:"isAnotherCurrency,omitempty"` // 其他币种标识
+	Price             string `json:"price,omitempty"`             // 汇率
+	PriceDate         string `json:"priceDate,omitempty"`         // 汇率日期
 }
 
 type AccountPosition struct {
@@ -313,32 +323,48 @@ func LoadLedgerAccounts(ledgerId string) error {
 		lines := strings.Split(string(bytes), "\n")
 		var temp Account
 		for _, line := range lines {
+			line = strings.TrimSpace(line) //去除文本前后空白
 			if line != "" {
-				words := strings.Fields(line)
-				if len(words) >= 3 {
-					key := words[2]
-					temp = accountMap[key]
-					account := Account{Acc: key, Type: nil}
-					// 货币单位
-					if len(words) >= 4 {
-						account.Currency = words[3]
+				if line[0] == ';' {
+					// 跳过注释行
+					continue
+				} else {
+					//非注释行
+					words := strings.Fields(line)
+					if len(words) >= 3 {
+						key := words[2]
+						temp = accountMap[key]
+						account := Account{Acc: key, Type: nil, StartDate: "", EndDate: ""}
+						if words[1] == "open" {
+							// 最晚的开户日期设置为账户开户日期
+							account.StartDate = getMaxDate(words[0], temp.StartDate)
+							// 货币单位
+							if len(words) >= 4 {
+								account.Currency = words[3]
+							}
+						} else if words[1] == "close" {
+							//账户最晚的关闭日期设置为账户关闭日期
+							account.EndDate = getMaxDate(words[0], temp.EndDate)
+						}
+						if account.EndDate != "" && account.StartDate == getMaxDate(account.StartDate, account.EndDate) {
+							// 如果结束时间非空，且 开户日期>关闭日期，则清空账户结束日期，设置此账户为有效账户
+							account.EndDate = ""
+							account.Status = true
+						}
+						// 现在如果结束日期非空，肯定满足有开始时间<结束时间
+						if account.EndDate != "" {
+							account.Status = false
+						}
+						if account.Currency == "" {
+							account.Currency = temp.Currency
+						}
+						accountMap[key] = account
 					}
-					if words[1] == "open" {
-						account.StartDate = words[0]
-					} else if words[1] == "close" {
-						account.EndDate = words[0]
-					}
-					if temp.StartDate != "" {
-						account.StartDate = temp.StartDate
-					}
-					if temp.EndDate != "" {
-						account.EndDate = temp.EndDate
-					}
-					accountMap[key] = account
 				}
 			}
 		}
 	}
+
 	accounts := make([]Account, 0)
 	for _, account := range accountMap {
 		accounts = append(accounts, account)
@@ -458,11 +484,8 @@ type CommodityPrice struct {
 	Value     string `json:"value"`
 }
 
-func RefreshLedgerCurrency(ledgerConfig *Config) []LedgerCurrency {
-	// 查询货币获取当前汇率
-	output := BeanReportAllPrices(ledgerConfig)
-	statsPricesResultList := make([]CommodityPrice, 0)
-	lines := strings.Split(output, "\n")
+func newCommodityPriceListFromString(lines []string) []CommodityPrice {
+	commodityPriceList := make([]CommodityPrice, 0, len(lines))
 	// foreach lines
 	for _, line := range lines {
 		if strings.Trim(line, " ") == "" {
@@ -470,14 +493,19 @@ func RefreshLedgerCurrency(ledgerConfig *Config) []LedgerCurrency {
 		}
 		// split line by " "
 		words := strings.Fields(line)
-		statsPricesResultList = append(statsPricesResultList, CommodityPrice{
+		commodityPriceList = append(commodityPriceList, CommodityPrice{
 			Date:      words[0],
 			Commodity: words[2],
 			Value:     words[3],
 			Currency:  words[4],
 		})
 	}
+	return commodityPriceList
+}
 
+func RefreshLedgerCurrency(ledgerConfig *Config) []LedgerCurrency {
+	// 查询货币获取当前汇率
+	statsPricesResultList := BeanReportAllPrices(ledgerConfig)
 	// statsPricesResultList 转为 map
 	existCurrencyMap := make(map[string]CommodityPrice)
 	for _, statsPricesResult := range statsPricesResultList {
@@ -549,6 +577,11 @@ func GetServerCommoditySymbol(commodity string) string {
 func GetAccountPrefix(account string) string {
 	nodes := strings.Split(account, ":")
 	return nodes[0]
+}
+
+func GetAccountName(account string) string {
+	nodes := strings.Split(account, ":")
+	return nodes[len(nodes)-1]
 }
 
 func GetAccountIconName(account string) string {
